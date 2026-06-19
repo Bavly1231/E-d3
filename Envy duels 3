@@ -1238,7 +1238,6 @@ saveConfig = function(btn)
 		pbPos=pbFrame and {xs=pbFrame.Position.X.Scale,xo=pbFrame.Position.X.Offset,ys=pbFrame.Position.Y.Scale,yo=pbFrame.Position.Y.Offset} or nil,
 	}
 	local ok = false
-	local err = nil
 	pcall(function()
 		local encoded = HttpService:JSONEncode(cfg)
 		local wf = writefile or (syn and syn.writefile) or (getgenv and getgenv().writefile)
@@ -1310,14 +1309,7 @@ loadConfig = function()
         task.defer(function() if progressRadLbl then progressRadLbl.Text="Radius: "..Steal.StealRadius end end)
     end
 
-    local function lk(e,d) if not d then return end
-        if d.kb and Enum.KeyCode[d.kb] then e.kb=Enum.KeyCode[d.kb] end
-        if d.gp and Enum.KeyCode[d.gp] then e.gp=Enum.KeyCode[d.gp] end
-    end
-    lk(KB.AutoLeft,cfg.autoLeftKey); lk(KB.AutoRight,cfg.autoRightKey)
-    lk(KB.Drop,cfg.dropKey); lk(KB.TPDown,cfg.tpDownKey); lk(KB.AutoBat,cfg.autoBatKey)
-    lk(KB.GuiHide,cfg.guiHideKey)
-
+    -- Load toggle states
     if cfg.infJump then State.infJumpEnabled=true; if setInfJump then setInfJump(true) end end
     if cfg.antiRagdoll then State.antiRagdollEnabled=true; if setAntiRag then setAntiRag(true) end; startAntiRagdoll() end
     if cfg.medusaCounter then State.medusaCounterEnabled=true; if setMedusaCounter then setMedusaCounter(true) end; setupMedusaCounter(LP.Character) end
@@ -1330,12 +1322,41 @@ loadConfig = function()
     if cfg.darkMode then State.darkModeEnabled=true; if setDarkMode then setDarkMode(true) end end
     if cfg.desyncEnabled then State.desyncEnabled=true; task.defer(function() if setDesync then setDesync(true) end; if saDesync then saDesync(true) end; startDesyncSession() end) end
     if cfg.autoBatToggled then State.autoBatToggled=true; task.defer(function() if autoBatSetVisual then autoBatSetVisual(true) end; pcall(startBatAimbot) end) end
+
+    local function lk(e,d) if not d then return end
+        if d.kb and Enum.KeyCode[d.kb] then e.kb=Enum.KeyCode[d.kb] end
+        if d.gp and Enum.KeyCode[d.gp] then e.gp=Enum.KeyCode[d.gp] end
+    end
+    lk(KB.AutoLeft,cfg.autoLeftKey); lk(KB.AutoRight,cfg.autoRightKey)
+    lk(KB.Drop,cfg.dropKey); lk(KB.TPDown,cfg.tpDownKey); lk(KB.AutoBat,cfg.autoBatKey)
+    lk(KB.GuiHide,cfg.guiHideKey)
     
     task.spawn(function()
         task.wait(0.5)
         local function lp(frame, d) if frame and type(d)=="table" and d.xs~=nil then frame.Position=UDim2.new(d.xs,d.xo,d.ys,d.yo) end end
         lp(main, cfg.mainPos); lp(mini, cfg.miniPos)
         lp(MobilePanel, cfg.panelPos); lp(pbFrame, cfg.pbPos)
+        
+        -- Update speed input boxes
+        for _, page in pairs(tabPages) do
+            for _, child in ipairs(page:GetChildren()) do
+                if child:IsA("Frame") then
+                    for _, subchild in ipairs(child:GetChildren()) do
+                        if subchild:IsA("TextBox") then
+                            for _, label in ipairs(child:GetChildren()) do
+                                if label:IsA("TextLabel") then
+                                    if label.Text == "Normal Speed" then
+                                        subchild.Text = tostring(normalSpeed)
+                                    elseif label.Text == "Steal Speed" then
+                                        subchild.Text = tostring(stealSpeed)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end)
     
     return true
@@ -1469,12 +1490,12 @@ do
 	end)
 end
 
-setInfJump       = rowToggle("Mechanics", "Infinite Jump",  nil, false, function(on) State.infJumpEnabled = on end)
-setAntiRag       = rowToggle("Mechanics", "Anti Ragdoll",   nil, false, function(on) State.antiRagdollEnabled=on; if on then startAntiRagdoll() else stopAntiRagdoll() end end)
-setUnwalkToggle  = rowToggle("Mechanics", "Unwalk",         nil, false, function(on) State.unwalkEnabled=on; if on then startUnwalk() else stopUnwalk() end end)
-setMedusaCounter = rowToggle("Mechanics", "Medusa Counter", nil, false, function(on) State.medusaCounterEnabled=on; if on then setupMedusaCounter(LP.Character) else stopMedusaCounter() end end)
-setBatCounter    = rowToggle("Mechanics", "Bat Counter",    nil, false, function(on) State.batCounterEnabled=on; if on then startBatCounter() else stopBatCounter() end end)
-setDesync        = rowToggle("Mechanics", "Desync",         nil, false, function(on) if on then startDesyncSession() else stopDesyncSession() end end)
+setInfJump       = rowToggle("Mechanics", "Infinite Jump",  nil, false, function(on) State.infJumpEnabled = on; pcall(saveConfig) end)
+setAntiRag       = rowToggle("Mechanics", "Anti Ragdoll",   nil, false, function(on) State.antiRagdollEnabled=on; if on then startAntiRagdoll() else stopAntiRagdoll() end; pcall(saveConfig) end)
+setUnwalkToggle  = rowToggle("Mechanics", "Unwalk",         nil, false, function(on) State.unwalkEnabled=on; if on then startUnwalk() else stopUnwalk() end; pcall(saveConfig) end)
+setMedusaCounter = rowToggle("Mechanics", "Medusa Counter", nil, false, function(on) State.medusaCounterEnabled=on; if on then setupMedusaCounter(LP.Character) else stopMedusaCounter() end; pcall(saveConfig) end)
+setBatCounter    = rowToggle("Mechanics", "Bat Counter",    nil, false, function(on) State.batCounterEnabled=on; if on then startBatCounter() else stopBatCounter() end; pcall(saveConfig) end)
+setDesync        = rowToggle("Mechanics", "Desync",         nil, false, function(on) if on then startDesyncSession() else stopDesyncSession() end; pcall(saveConfig) end)
 
 makeSecHeader("Movement", "Movement & Teleport")
 do
@@ -1649,26 +1670,19 @@ do
 	setAntiLag = function(on)
 		State.antiLagEnabled = on
 		if on then enableAntiLag() else disableAntiLag() end
+		pcall(saveConfig)
 	end
 	local setAntiLagVisual = rowToggle("Performance", "Anti Lag", nil, false, function(on) setAntiLag(on) end)
-	local _origSetAntiLag = setAntiLag
-	setAntiLag = function(on) setAntiLagVisual(on); _origSetAntiLag(on) end
 end
 
-setStretchRez = function(on) if on then enableStretchRez() else disableStretchRez() end end
+setStretchRez = function(on) if on then enableStretchRez() else disableStretchRez() end; pcall(saveConfig) end
 local setStretchRezVisual = rowToggle("Performance", "Stretch Rez", nil, false, function(on) setStretchRez(on) end)
-local _origStretchRez = setStretchRez
-setStretchRez = function(on) setStretchRezVisual(on); _origStretchRez(on) end
 
-setRemoveAccessories = function(on) if on then enableRemoveAccessories() else disableRemoveAccessories() end end
+setRemoveAccessories = function(on) if on then enableRemoveAccessories() else disableRemoveAccessories() end; pcall(saveConfig) end
 local setRemoveAccVisual = rowToggle("Performance", "Remove Accessories", nil, false, function(on) setRemoveAccessories(on) end)
-local _origRemoveAcc = setRemoveAccessories
-setRemoveAccessories = function(on) setRemoveAccVisual(on); _origRemoveAcc(on) end
 
-setDarkMode = function(on) if on then enableDarkMode() else disableDarkMode() end end
+setDarkMode = function(on) if on then enableDarkMode() else disableDarkMode() end; pcall(saveConfig) end
 local setDarkModeVisual = rowToggle("Performance", "Dark Mode", nil, false, function(on) setDarkMode(on) end)
-local _origDarkMode = setDarkMode
-setDarkMode = function(on) setDarkModeVisual(on); _origDarkMode(on) end
 
 makeSecHeader("Settings", "Interface & Binds")
 
@@ -1778,6 +1792,7 @@ rowKBOnly("Settings", "Hide / Show GUI", nil, KB.GuiHide, function(k) KB.GuiHide
 setLockUIVisual = rowToggle("Settings", "Lock UI", nil, false, function(on)
 	uiLocked = on
 	autoSavePositions()
+	pcall(saveConfig)
 end)
 local saveBtn; saveBtn = rowActionBtn("Settings", "Save Config", function()
 	if saveConfig then
@@ -1961,9 +1976,7 @@ startBatAimbot = function()
 		if not State.autoBatToggled then return end
 		local char = LP.Character; if not char then return end
 		local root = char:FindFirstChild("HumanoidRootPart"); if not root then return end
-		local hum = char:FindFirstChildOfClass("Humanoid"); if not hum then return end
-
-		if not char:FindFirstChildOfClass("Tool") then
+		local hum = char:FindFirstChildOfClass("Humanoid"); if not hum then return end		if not char:FindFirstChildOfClass("Tool") then
 			local bat = findBat()
 			if bat then pcall(function() hum:EquipTool(bat) end) end
 		end
