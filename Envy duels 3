@@ -1200,7 +1200,7 @@ local function resetProgressBar()
 end
 
 -- ============================================================
--- TAB CONTENT - REMOVED ALL SPEED RELATED UI
+-- TAB CONTENT
 -- ============================================================
 makeSecHeader("Bat Aimbot", "Bat Combat")
 do
@@ -1220,6 +1220,71 @@ setAutoGrab = rowToggle("Mechanics", "Auto Grab", nil, false, function(on)
 	if on then if not pcall(startAutoSteal) then Steal.AutoStealEnabled = false; setAutoGrab(false) end
 	else stopAutoSteal() end
 end)
+
+-- ===== SPEED SETTINGS (Auto-Detection) =====
+do
+	local c = baseCard("Mechanics", 48)
+	cLabel(c, "Normal Speed", 10, 130, 11, WHITE, Enum.Font.GothamBold)
+	local sl = cLabel(c, "Speed when not stealing", 10, 170, 9, DIM, Enum.Font.Gotham)
+	sl.Size = UDim2.new(0, 170, 0, 13); sl.Position = UDim2.new(0, 10, 0, 24)
+	
+	local normalBox = Instance.new("TextBox", c)
+	normalBox.Size = UDim2.new(0, 64, 0, 24)
+	normalBox.Position = UDim2.new(1, -74, 0.5, -12)
+	normalBox.BackgroundColor3 = INPUT_BG
+	normalBox.BorderSizePixel = 0
+	normalBox.Text = tostring(normalSpeed)
+	normalBox.TextColor3 = WHITE
+	normalBox.Font = Enum.Font.GothamBold
+	normalBox.TextSize = 11
+	normalBox.ClearTextOnFocus = false
+	normalBox.ZIndex = 11
+	Instance.new("UICorner", normalBox).CornerRadius = UDim.new(0, 5)
+	local normalBs = Instance.new("UIStroke", normalBox); normalBs.Color = BORDER2; normalBs.Thickness = 1; normalBs.ZIndex = 12
+	normalBox.Focused:Connect(function() TweenService:Create(normalBs, TweenInfo.new(0.1), {Color=WHITE}):Play() end)
+	normalBox.FocusLost:Connect(function()
+		TweenService:Create(normalBs, TweenInfo.new(0.1), {Color=BORDER2}):Play()
+		local n = tonumber(normalBox.Text)
+		if n and n > 0 and n <= 500 then 
+			normalSpeed = n
+		else 
+			normalBox.Text = tostring(normalSpeed) 
+		end
+		pcall(saveConfig)
+	end)
+end
+
+do
+	local c = baseCard("Mechanics", 48)
+	cLabel(c, "Steal Speed", 10, 130, 11, WHITE, Enum.Font.GothamBold)
+	local sl = cLabel(c, "Speed when stealing", 10, 170, 9, DIM, Enum.Font.Gotham)
+	sl.Size = UDim2.new(0, 170, 0, 13); sl.Position = UDim2.new(0, 10, 0, 24)
+	
+	local stealBox = Instance.new("TextBox", c)
+	stealBox.Size = UDim2.new(0, 64, 0, 24)
+	stealBox.Position = UDim2.new(1, -74, 0.5, -12)
+	stealBox.BackgroundColor3 = INPUT_BG
+	stealBox.BorderSizePixel = 0
+	stealBox.Text = tostring(stealSpeed)
+	stealBox.TextColor3 = WHITE
+	stealBox.Font = Enum.Font.GothamBold
+	stealBox.TextSize = 11
+	stealBox.ClearTextOnFocus = false
+	stealBox.ZIndex = 11
+	Instance.new("UICorner", stealBox).CornerRadius = UDim.new(0, 5)
+	local stealBs = Instance.new("UIStroke", stealBox); stealBs.Color = BORDER2; stealBs.Thickness = 1; stealBs.ZIndex = 12
+	stealBox.Focused:Connect(function() TweenService:Create(stealBs, TweenInfo.new(0.1), {Color=WHITE}):Play() end)
+	stealBox.FocusLost:Connect(function()
+		TweenService:Create(stealBs, TweenInfo.new(0.1), {Color=BORDER2}):Play()
+		local n = tonumber(stealBox.Text)
+		if n and n > 0 and n <= 500 then 
+			stealSpeed = n
+		else 
+			stealBox.Text = tostring(stealSpeed) 
+		end
+		pcall(saveConfig)
+	end)
+end
 
 do
 	local c = baseCard("Mechanics", 38)
@@ -1748,7 +1813,7 @@ saveConfig = function(btn)
 end
 
 -- ============================================================
--- BAT AIMBOT FUNCTIONS (keep from original)
+-- BAT AIMBOT FUNCTIONS
 -- ============================================================
 local function findBat()
 	local char = LP.Character; if not char then return nil end
