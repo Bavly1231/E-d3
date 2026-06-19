@@ -1247,10 +1247,10 @@ do
 		local n = tonumber(normalBox.Text)
 		if n and n > 0 and n <= 500 then 
 			normalSpeed = n
+			pcall(saveConfig)
 		else 
 			normalBox.Text = tostring(normalSpeed) 
 		end
-		pcall(saveConfig)
 	end)
 end
 
@@ -1279,10 +1279,10 @@ do
 		local n = tonumber(stealBox.Text)
 		if n and n > 0 and n <= 500 then 
 			stealSpeed = n
+			pcall(saveConfig)
 		else 
 			stealBox.Text = tostring(stealSpeed) 
 		end
-		pcall(saveConfig)
 	end)
 end
 
@@ -1320,6 +1320,7 @@ do
 				radValBtn.Text = tostring(Steal.StealRadius)
 				progressRadLbl.Text = "Radius: "..Steal.StealRadius
 				Steal.cachedPrompts = {}; Steal.promptCacheTime = 0
+				pcall(saveConfig)
 			end
 			tb:Destroy(); typing2 = false
 		end)
@@ -1775,41 +1776,167 @@ do
 	mobileBtnActive.AutoBat   = saAB
 end
 
+-- ============================================================
+-- SAVE CONFIG FUNCTION (FIXED)
+-- ============================================================
 saveConfig = function(btn)
 	local function ks(e) return {kb=e.kb and e.kb.Name or nil, gp=e.gp and e.gp.Name or nil} end
 	local cfg = {
-		normalSpeed=normalSpeed, stealSpeed=stealSpeed,
+		normalSpeed=normalSpeed, 
+		stealSpeed=stealSpeed,
 		introEnabled=State.introEnabled,
 		selectedIntroMusic=State.selectedIntroMusic,
-		autoLeftKey=ks(KB.AutoLeft), autoRightKey=ks(KB.AutoRight),
-		dropKey=ks(KB.Drop), tpDownKey=ks(KB.TPDown),
-		autoBatKey=ks(KB.AutoBat), guiHideKey=ks(KB.GuiHide),
+		autoLeftKey=ks(KB.AutoLeft), 
+		autoRightKey=ks(KB.AutoRight),
+		dropKey=ks(KB.Drop), 
+		tpDownKey=ks(KB.TPDown),
+		autoBatKey=ks(KB.AutoBat), 
+		guiHideKey=ks(KB.GuiHide),
 		grabRadius=Steal.StealRadius,
-		infJump=State.infJumpEnabled, antiRagdoll=State.antiRagdollEnabled,
-		autoStealEnabled=Steal.AutoStealEnabled, unwalkEnabled=State.unwalkEnabled,
+		infJump=State.infJumpEnabled, 
+		antiRagdoll=State.antiRagdollEnabled,
+		autoStealEnabled=Steal.AutoStealEnabled, 
+		unwalkEnabled=State.unwalkEnabled,
 		uiLocked=uiLocked,
 		autoBatToggled=State.autoBatToggled,
 		desyncEnabled=State.desyncEnabled,
+		uiScale=uiScaleValue,
+		autoTPDown=autoTPDownEnabled,
+		autoTPDownHeight=autoTPDownHeight,
+		stretchRez=State.stretchRezEnabled,
+		removeAccessories=State.removeAccessoriesEnabled,
+		antiLag=State.antiLagEnabled,
+		darkMode=State.darkModeEnabled,
+		medusaCounter=State.medusaCounterEnabled,
+		batCounter=State.batCounterEnabled,
 		mainPos=main and {xs=main.Position.X.Scale,xo=main.Position.X.Offset,ys=main.Position.Y.Scale,yo=main.Position.Y.Offset} or nil,
 		miniPos=mini and {xs=mini.Position.X.Scale,xo=mini.Position.X.Offset,ys=mini.Position.Y.Scale,yo=mini.Position.Y.Offset} or nil,
 		panelPos=MobilePanel and {xs=MobilePanel.Position.X.Scale,xo=MobilePanel.Position.X.Offset,ys=MobilePanel.Position.Y.Scale,yo=MobilePanel.Position.Y.Offset} or nil,
 		pbPos=pbFrame and {xs=pbFrame.Position.X.Scale,xo=pbFrame.Position.X.Offset,ys=pbFrame.Position.Y.Scale,yo=pbFrame.Position.Y.Offset} or nil,
 	}
-	local ok = pcall(function()
+	local ok, err = pcall(function()
 		local encoded = HttpService:JSONEncode(cfg)
-		if writefile then writefile("EnvyMobileConfig.json", encoded) end
+		local wf = writefile or (syn and syn.writefile) or (getgenv and getgenv().writefile)
+		if wf then 
+			wf("EnvyMobileConfig.json", encoded) 
+		end
 	end)
-	if not ok then
-		pcall(function()
-			local encoded = HttpService:JSONEncode(cfg)
-			if _writefile then _writefile("EnvyMobileConfig.json", encoded) end
-		end)
-	end
 	if btn then
 		local prev = btn.Text
 		btn.Text = ok and "✓  Saved!" or "✕  Failed!"
-		task.wait(1.5); btn.Text = prev
+		task.wait(1.5); 
+		if btn and btn.Parent then 
+			btn.Text = prev 
+		end
 	end
+	return ok
+end
+
+-- ============================================================
+-- LOAD CONFIG FUNCTION (FIXED)
+-- ============================================================
+loadConfig = function()
+    local isf = isfile or (syn and syn.isfile) or (getgenv and getgenv().isfile)
+    local rdf = readfile or (syn and syn.readfile) or (getgenv and getgenv().readfile)
+    local hasFile=false; 
+    pcall(function() hasFile=isf("EnvyMobileConfig.json") end)
+    if not hasFile then return false end
+    local raw; 
+    pcall(function() raw=rdf("EnvyMobileConfig.json") end)
+    if not raw then return false end
+    local cfg; 
+    pcall(function() cfg=HttpService:JSONDecode(raw) end)
+    if not cfg then return false end
+
+    -- Load speed values
+    if cfg.normalSpeed then 
+        normalSpeed = cfg.normalSpeed
+    end
+    if cfg.stealSpeed then 
+        stealSpeed = cfg.stealSpeed
+    end
+    if cfg.uiScale and type(cfg.uiScale)=="number" then
+        uiScaleValue=math.clamp(math.floor(cfg.uiScale+0.5),50,150)
+        if mainUIScale then mainUIScale.Scale=uiScaleValue/100 end
+        task.defer(function() if uiScaleBox then uiScaleBox.Text=tostring(uiScaleValue) end end)
+    end
+    if cfg.uiLocked then uiLocked=true; task.defer(function() if setLockUIVisual then setLockUIVisual(true) end end) end
+    if cfg.selectedIntroMusic then State.selectedIntroMusic = cfg.selectedIntroMusic 
+        task.defer(function() 
+            if getgenv().EnvyMusicBtn then 
+                getgenv().EnvyMusicBtn.Text = "Music " .. State.selectedIntroMusic 
+            end 
+        end)
+    end
+    if cfg.introEnabled ~= nil then State.introEnabled = cfg.introEnabled; if setIntroToggle then task.defer(function() setIntroToggle(cfg.introEnabled) end) end end
+    if cfg.autoTPDown then 
+        autoTPDownEnabled=true
+        task.defer(function() 
+            if setAutoTPDownVisual then setAutoTPDownVisual(true) end
+            startAutoTPDown() 
+        end) 
+    end
+    if cfg.autoTPDownHeight and type(cfg.autoTPDownHeight)=="number" then 
+        autoTPDownHeight=math.clamp(cfg.autoTPDownHeight,0,500)
+    end
+    if cfg.grabRadius then
+        Steal.StealRadius = cfg.grabRadius
+        task.defer(function() if progressRadLbl then progressRadLbl.Text="Radius: "..Steal.StealRadius end end)
+    end
+
+    local function lk(e,d) if not d then return end
+        if d.kb and Enum.KeyCode[d.kb] then e.kb=Enum.KeyCode[d.kb] end
+        if d.gp and Enum.KeyCode[d.gp] then e.gp=Enum.KeyCode[d.gp] end
+    end
+    lk(KB.AutoLeft,cfg.autoLeftKey); lk(KB.AutoRight,cfg.autoRightKey)
+    lk(KB.Drop,cfg.dropKey); lk(KB.TPDown,cfg.tpDownKey); lk(KB.AutoBat,cfg.autoBatKey)
+    lk(KB.GuiHide,cfg.guiHideKey)
+
+    if cfg.infJump then State.infJumpEnabled=true; if setInfJump then setInfJump(true) end end
+    if cfg.antiRagdoll then State.antiRagdollEnabled=true; if setAntiRag then setAntiRag(true) end; startAntiRagdoll() end
+    if cfg.medusaCounter then State.medusaCounterEnabled=true; if setMedusaCounter then setMedusaCounter(true) end; setupMedusaCounter(LP.Character) end
+    if cfg.batCounter then State.batCounterEnabled=true; if setBatCounter then setBatCounter(true) end; startBatCounter() end
+    if cfg.autoStealEnabled then Steal.AutoStealEnabled=true; if setAutoGrab then setAutoGrab(true) end; pcall(startAutoSteal) end
+    if cfg.unwalkEnabled then State.unwalkEnabled=true; if setUnwalkToggle then setUnwalkToggle(true) end; startUnwalk() end
+    if cfg.stretchRez then State.stretchRezEnabled=true; if setStretchRez then setStretchRez(true) end end
+    if cfg.removeAccessories then State.removeAccessoriesEnabled=true; if setRemoveAccessories then setRemoveAccessories(true) end end
+    if cfg.antiLag then State.antiLagEnabled=true; if setAntiLag then setAntiLag(true) end end
+    if cfg.darkMode then State.darkModeEnabled=true; if setDarkMode then setDarkMode(true) end end
+    if cfg.desyncEnabled then State.desyncEnabled=true; task.defer(function() if setDesync then setDesync(true) end; if saDesync then saDesync(true) end; startDesyncSession() end) end
+    if cfg.autoBatToggled then State.autoBatToggled=true; task.defer(function() if autoBatSetVisual then autoBatSetVisual(true) end; pcall(startBatAimbot) end) end
+    
+    task.spawn(function()
+        task.wait(0.5)
+        local function lp(frame, d) if frame and type(d)=="table" and d.xs~=nil then frame.Position=UDim2.new(d.xs,d.xo,d.ys,d.yo) end end
+        lp(main, cfg.mainPos); lp(mini, cfg.miniPos)
+        lp(MobilePanel, cfg.panelPos); lp(pbFrame, cfg.pbPos)
+    end)
+    
+    -- Update UI boxes with loaded values
+    task.defer(function()
+        for _, page in pairs(tabPages) do
+            for _, child in ipairs(page:GetChildren()) do
+                if child:IsA("Frame") then
+                    for _, subchild in ipairs(child:GetChildren()) do
+                        if subchild:IsA("TextBox") then
+                            -- Check if this is the Normal Speed box
+                            for _, label in ipairs(child:GetChildren()) do
+                                if label:IsA("TextLabel") and label.Text == "Normal Speed" then
+                                    subchild.Text = tostring(normalSpeed)
+                                    break
+                                elseif label:IsA("TextLabel") and label.Text == "Steal Speed" then
+                                    subchild.Text = tostring(stealSpeed)
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    
+    return true
 end
 
 -- ============================================================
@@ -2391,80 +2518,21 @@ UIS.InputBegan:Connect(function(inp,gp)
 end)
 
 -- ============================================================
--- LOAD CONFIG
+-- INIT
 -- ============================================================
-loadConfig = function()
-    local isf = isfile or (syn and syn.isfile) or (getgenv and getgenv().isfile)
-    local rdf = readfile or (syn and syn.readfile) or (getgenv and getgenv().readfile)
-    local hasFile=false; pcall(function() hasFile=isf("EnvyMobileConfig.json") end)
-    if not hasFile then return end
-    local raw; pcall(function() raw=rdf("EnvyMobileConfig.json") end)
-    if not raw then return end
-    local cfg; pcall(function() cfg=HttpService:JSONDecode(raw) end)
-    if not cfg then return end
+-- Load config first, then save
+task.delay(0.5, function()
+    pcall(loadConfig)
+    task.wait(0.5)
+    pcall(saveConfig)
+end)
 
-    if cfg.normalSpeed then normalSpeed=cfg.normalSpeed end
-    if cfg.stealSpeed then stealSpeed=cfg.stealSpeed end
-    if cfg.uiScale and type(cfg.uiScale)=="number" then
-        uiScaleValue=math.clamp(math.floor(cfg.uiScale+0.5),50,150)
-        if mainUIScale then mainUIScale.Scale=uiScaleValue/100 end
-        task.defer(function() if uiScaleBox then uiScaleBox.Text=tostring(uiScaleValue) end end)
+-- Auto-save every 30 seconds
+task.spawn(function()
+    while task.wait(30) do
+        pcall(saveConfig)
     end
-    if cfg.uiLocked then uiLocked=true; task.defer(function() if setLockUIVisual then setLockUIVisual(true) end end) end
-    if cfg.selectedIntroMusic then State.selectedIntroMusic = cfg.selectedIntroMusic 
-        task.defer(function() 
-            if getgenv().EnvyMusicBtn then 
-                getgenv().EnvyMusicBtn.Text = "Music " .. State.selectedIntroMusic 
-            end 
-        end)
-    end
-    if cfg.introEnabled ~= nil then State.introEnabled = cfg.introEnabled; if setIntroToggle then task.defer(function() setIntroToggle(cfg.introEnabled) end) end end
-    if cfg.autoTPDown then 
-        autoTPDownEnabled=true
-        task.defer(function() 
-            if setAutoTPDownVisual then setAutoTPDownVisual(true) end
-            startAutoTPDown() 
-        end) 
-    end
-    if cfg.autoTPDownHeight and type(cfg.autoTPDownHeight)=="number" then 
-        autoTPDownHeight=math.clamp(cfg.autoTPDownHeight,0,500)
-    end
-    if cfg.grabRadius then
-        Steal.StealRadius = cfg.grabRadius
-        task.defer(function() if progressRadLbl then progressRadLbl.Text="Radius: "..Steal.StealRadius end end)
-    end
-
-    local function lk(e,d) if not d then return end
-        if d.kb and Enum.KeyCode[d.kb] then e.kb=Enum.KeyCode[d.kb] end
-        if d.gp and Enum.KeyCode[d.gp] then e.gp=Enum.KeyCode[d.gp] end
-    end
-    lk(KB.AutoLeft,cfg.autoLeftKey); lk(KB.AutoRight,cfg.autoRightKey)
-    lk(KB.Drop,cfg.dropKey); lk(KB.TPDown,cfg.tpDownKey); lk(KB.AutoBat,cfg.autoBatKey)
-    lk(KB.GuiHide,cfg.guiHideKey)
-
-    if cfg.infJump then State.infJumpEnabled=true; if setInfJump then setInfJump(true) end end
-    if cfg.antiRagdoll then State.antiRagdollEnabled=true; if setAntiRag then setAntiRag(true) end; startAntiRagdoll() end
-    if cfg.medusaCounter then State.medusaCounterEnabled=true; if setMedusaCounter then setMedusaCounter(true) end; setupMedusaCounter(LP.Character) end
-    if cfg.batCounter then State.batCounterEnabled=true; if setBatCounter then setBatCounter(true) end; startBatCounter() end
-    if cfg.autoStealEnabled then Steal.AutoStealEnabled=true; if setAutoGrab then setAutoGrab(true) end; pcall(startAutoSteal) end
-    if cfg.unwalkEnabled then State.unwalkEnabled=true; if setUnwalkToggle then setUnwalkToggle(true) end; startUnwalk() end
-    if cfg.stretchRez then State.stretchRezEnabled=true; if setStretchRez then setStretchRez(true) end end
-    if cfg.removeAccessories then State.removeAccessoriesEnabled=true; if setRemoveAccessories then setRemoveAccessories(true) end end
-    if cfg.antiLag then State.antiLagEnabled=true; if setAntiLag then setAntiLag(true) end end
-    if cfg.darkMode then State.darkModeEnabled=true; if setDarkMode then setDarkMode(true) end end
-    if cfg.desyncEnabled then State.desyncEnabled=true; task.defer(function() if setDesync then setDesync(true) end; if saDesync then saDesync(true) end; startDesyncSession() end) end
-    if cfg.autoBatToggled then State.autoBatToggled=true; task.defer(function() if autoBatSetVisual then autoBatSetVisual(true) end; pcall(startBatAimbot) end) end
-    
-    task.spawn(function()
-        task.wait(0.5)
-        local function lp(frame, d) if frame and type(d)=="table" and d.xs~=nil then frame.Position=UDim2.new(d.xs,d.xo,d.ys,d.yo) end end
-        lp(main, cfg.mainPos); lp(mini, cfg.miniPos)
-        lp(MobilePanel, cfg.panelPos); lp(pbFrame, cfg.pbPos)
-    end)
-end
-
-task.delay(1,function() pcall(loadConfig) end)
-task.delay(1.5,function() pcall(saveConfig) end)
+end)
 
 -- ============================================================
 -- INTRO ANIMATION
