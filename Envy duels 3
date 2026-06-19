@@ -214,6 +214,134 @@ LP.CharacterAdded:Connect(function()
     isStealing = false
 end)
 
+-- ============================================================
+-- STATE TABLE - ALL SETTINGS STORED HERE
+-- ============================================================
+local State = {
+	guiVisible = true,
+	introEnabled = true, 
+	selectedIntroMusic = 1,
+	isStealing = false, 
+	stealStartTime = nil, 
+	lastStealTick = 0,
+	dropActive = false,
+	autoLeftEnabled = false, 
+	autoRightEnabled = false,
+	unwalkEnabled = false,
+	desyncEnabled = false,
+	stretchRezEnabled = false, 
+	removeAccessoriesEnabled = false,
+	infJumpEnabled = false,
+	antiRagdollEnabled = false,
+	antiLagEnabled = false,
+	medusaCounterEnabled = false,
+	batCounterEnabled = false,
+	autoBatToggled = false,
+	autoStealEnabled = false,
+}
+
+-- ============================================================
+-- SAVE CONFIG - AT THE TOP SO IT WORKS
+-- ============================================================
+saveConfig = function(btn)
+	local cfg = {
+		normalSpeed = normalSpeed,
+		stealSpeed = stealSpeed,
+		introEnabled = State.introEnabled,
+		selectedIntroMusic = State.selectedIntroMusic,
+		grabRadius = 8,
+		infJump = State.infJumpEnabled,
+		antiRagdoll = State.antiRagdollEnabled,
+		autoStealEnabled = State.autoStealEnabled,
+		unwalkEnabled = State.unwalkEnabled,
+		autoBatToggled = State.autoBatToggled,
+		desyncEnabled = State.desyncEnabled,
+		uiScale = 100,
+		autoTPDown = false,
+		autoTPDownHeight = 20,
+		stretchRez = State.stretchRezEnabled,
+		removeAccessories = State.removeAccessoriesEnabled,
+		antiLag = State.antiLagEnabled,
+		darkMode = State.darkModeEnabled,
+		medusaCounter = State.medusaCounterEnabled,
+		batCounter = State.batCounterEnabled,
+	}
+	
+	local ok = false
+	local encoded = HttpService:JSONEncode(cfg)
+	
+	-- Try to save to file
+	local wf = writefile or (syn and syn.writefile) or (getgenv and getgenv().writefile)
+	if wf then
+		pcall(function() 
+			wf("EnvyMobileConfig.json", encoded) 
+			ok = true
+		end)
+	end
+	
+	-- Save to global backup too
+	getgenv().EnvyConfigBackup = cfg
+	
+	if btn then
+		local prev = btn.Text
+		btn.Text = ok and "✓ Saved!" or "⚠ Backup Saved!"
+		task.wait(1.5)
+		if btn and btn.Parent then 
+			btn.Text = prev 
+		end
+	end
+	return ok
+end
+
+-- ============================================================
+-- LOAD CONFIG - AT THE TOP SO IT WORKS
+-- ============================================================
+loadConfig = function()
+	local raw = nil
+	
+	-- Try to read from file
+	local rf = readfile or (syn and syn.readfile) or (getgenv and getgenv().readfile)
+	if rf then
+		pcall(function() raw = rf("EnvyMobileConfig.json") end)
+	end
+	
+	-- If no file, check global backup
+	if not raw then
+		local backup = getgenv().EnvyConfigBackup
+		if backup then
+			raw = HttpService:JSONEncode(backup)
+		end
+	end
+	
+	if not raw then return false end
+	
+	local cfg = HttpService:JSONDecode(raw)
+	if not cfg then return false end
+
+	-- Load all values into variables
+	if cfg.normalSpeed then normalSpeed = cfg.normalSpeed end
+	if cfg.stealSpeed then stealSpeed = cfg.stealSpeed end
+	if cfg.introEnabled ~= nil then State.introEnabled = cfg.introEnabled end
+	if cfg.selectedIntroMusic then State.selectedIntroMusic = cfg.selectedIntroMusic end
+	if cfg.infJump then State.infJumpEnabled = true end
+	if cfg.antiRagdoll then State.antiRagdollEnabled = true end
+	if cfg.autoStealEnabled then State.autoStealEnabled = true end
+	if cfg.unwalkEnabled then State.unwalkEnabled = true end
+	if cfg.autoBatToggled then State.autoBatToggled = true end
+	if cfg.desyncEnabled then State.desyncEnabled = true end
+	if cfg.stretchRez then State.stretchRezEnabled = true end
+	if cfg.removeAccessories then State.removeAccessoriesEnabled = true end
+	if cfg.antiLag then State.antiLagEnabled = true end
+	if cfg.darkMode then State.darkModeEnabled = true end
+	if cfg.medusaCounter then State.medusaCounterEnabled = true end
+	if cfg.batCounter then State.batCounterEnabled = true end
+	
+	return true
+end
+
+-- ============================================================
+-- REST OF THE UI CODE
+-- ============================================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
@@ -249,7 +377,6 @@ local _anyKeyListening, uiLocked = false, false
 local setLockUIVisual, MobilePanel, resetMobileButtons
 local autoSavePositions = function() end
 local mobileBtnActive = {}
-local saveConfig, loadConfig = nil, nil
 local progressFill, progressPct, progressRadLbl
 local setAutoGrab, setInfJump, setAntiRag, setUnwalkToggle, setIntroToggle
 local setMedusaCounter, setBatCounter, setDesync, saDesync
@@ -258,28 +385,11 @@ local autoLeftSetVisual, autoRightSetVisual, autoBatSetVisual
 local startAntiRagdoll, stopAntiRagdoll, startAutoSteal, stopAutoSteal
 local startBatAimbot, stopBatAimbot
 local startDesyncSession, stopDesyncSession
-local MobilePanel
 local uiScaleBox, uiScaleValue, mainUIScale
 local main, mini, gui, content, sidebar, portrait
 local tabs, tabPages, tabDefs, switchTab
 local pageLOs = {}
 local lo, pg
-local State = {
-	guiVisible = true,
-	introEnabled = true, selectedIntroMusic = 1,
-	isStealing = false, stealStartTime = nil, lastStealTick = 0,
-	dropActive = false,
-	autoLeftEnabled = false, autoRightEnabled = false,
-	unwalkEnabled = false,
-	desyncEnabled = false,
-	stretchRezEnabled = false, removeAccessoriesEnabled = false,
-	infJumpEnabled = false,
-	antiRagdollEnabled = false,
-	antiLagEnabled = false,
-	medusaCounterEnabled = false,
-	batCounterEnabled = false,
-	autoBatToggled = false,
-}
 
 local KB = {
 	AutoLeft  = {kb = Enum.KeyCode.Z,           gp = nil},
@@ -1172,157 +1282,6 @@ local function resetProgressBar()
 end
 
 -- ============================================================
--- SAVE CONFIG
--- ============================================================
-saveConfig = function(btn)
-	local function ks(e) return {kb=e.kb and e.kb.Name or nil, gp=e.gp and e.gp.Name or nil} end
-	local cfg = {
-		normalSpeed=normalSpeed, 
-		stealSpeed=stealSpeed,
-		introEnabled=State.introEnabled,
-		selectedIntroMusic=State.selectedIntroMusic,
-		autoLeftKey=ks(KB.AutoLeft), 
-		autoRightKey=ks(KB.AutoRight),
-		dropKey=ks(KB.Drop), 
-		tpDownKey=ks(KB.TPDown),
-		autoBatKey=ks(KB.AutoBat), 
-		guiHideKey=ks(KB.GuiHide),
-		grabRadius=Steal.StealRadius,
-		infJump=State.infJumpEnabled, 
-		antiRagdoll=State.antiRagdollEnabled,
-		autoStealEnabled=Steal.AutoStealEnabled, 
-		unwalkEnabled=State.unwalkEnabled,
-		uiLocked=uiLocked,
-		autoBatToggled=State.autoBatToggled,
-		desyncEnabled=State.desyncEnabled,
-		uiScale=uiScaleValue,
-		autoTPDown=autoTPDownEnabled,
-		autoTPDownHeight=autoTPDownHeight,
-		stretchRez=State.stretchRezEnabled,
-		removeAccessories=State.removeAccessoriesEnabled,
-		antiLag=State.antiLagEnabled,
-		darkMode=State.darkModeEnabled,
-		medusaCounter=State.medusaCounterEnabled,
-		batCounter=State.batCounterEnabled,
-		mainPos=main and {xs=main.Position.X.Scale,xo=main.Position.X.Offset,ys=main.Position.Y.Scale,yo=main.Position.Y.Offset} or nil,
-		miniPos=mini and {xs=mini.Position.X.Scale,xo=mini.Position.X.Offset,ys=mini.Position.Y.Scale,yo=mini.Position.Y.Offset} or nil,
-		panelPos=MobilePanel and {xs=MobilePanel.Position.X.Scale,xo=MobilePanel.Position.X.Offset,ys=MobilePanel.Position.Y.Scale,yo=MobilePanel.Position.Y.Offset} or nil,
-		pbPos=pbFrame and {xs=pbFrame.Position.X.Scale,xo=pbFrame.Position.X.Offset,ys=pbFrame.Position.Y.Scale,yo=pbFrame.Position.Y.Offset} or nil,
-	}
-	local ok = false
-	pcall(function()
-		local encoded = HttpService:JSONEncode(cfg)
-		local wf = writefile or (syn and syn.writefile) or (getgenv and getgenv().writefile)
-		if wf then 
-			wf("EnvyMobileConfig.json", encoded) 
-			ok = true
-		end
-	end)
-	if btn then
-		local prev = btn.Text
-		btn.Text = ok and "✓ Saved!" or "✕ Failed!"
-		task.wait(1.5)
-		if btn and btn.Parent then 
-			btn.Text = prev 
-		end
-	end
-	return ok
-end
-
--- ============================================================
--- LOAD CONFIG
--- ============================================================
-loadConfig = function()
-    local isf = isfile or (syn and syn.isfile) or (getgenv and getgenv().isfile)
-    local rdf = readfile or (syn and syn.readfile) or (getgenv and getgenv().readfile)
-    local hasFile = false
-    pcall(function() hasFile = isf("EnvyMobileConfig.json") end)
-    if not hasFile then return false end
-    local raw = nil
-    pcall(function() raw = rdf("EnvyMobileConfig.json") end)
-    if not raw then return false end
-    local cfg = nil
-    pcall(function() cfg = HttpService:JSONDecode(raw) end)
-    if not cfg then return false end
-
-    if cfg.normalSpeed then normalSpeed = cfg.normalSpeed end
-    if cfg.stealSpeed then stealSpeed = cfg.stealSpeed end
-    if cfg.uiScale and type(cfg.uiScale)=="number" then
-        uiScaleValue=math.clamp(math.floor(cfg.uiScale+0.5),50,150)
-        if mainUIScale then mainUIScale.Scale=uiScaleValue/100 end
-        task.defer(function() if uiScaleBox then uiScaleBox.Text=tostring(uiScaleValue) end end)
-    end
-    if cfg.uiLocked then uiLocked=true; task.defer(function() if setLockUIVisual then setLockUIVisual(true) end end) end
-    if cfg.selectedIntroMusic then State.selectedIntroMusic = cfg.selectedIntroMusic 
-        task.defer(function() 
-            if getgenv().EnvyMusicBtn then 
-                getgenv().EnvyMusicBtn.Text = "Music " .. State.selectedIntroMusic 
-            end 
-        end)
-    end
-    if cfg.introEnabled ~= nil then State.introEnabled = cfg.introEnabled; if setIntroToggle then task.defer(function() setIntroToggle(cfg.introEnabled) end) end end
-    if cfg.autoTPDown then 
-        autoTPDownEnabled=true
-        task.defer(function() 
-            if setAutoTPDownVisual then setAutoTPDownVisual(true) end
-            startAutoTPDown() 
-        end) 
-    end
-    if cfg.autoTPDownHeight and type(cfg.autoTPDownHeight)=="number" then 
-        autoTPDownHeight=math.clamp(cfg.autoTPDownHeight,0,500)
-    end
-    if cfg.grabRadius then
-        Steal.StealRadius = cfg.grabRadius
-        task.defer(function() if progressRadLbl then progressRadLbl.Text="Radius: "..Steal.StealRadius end end)
-    end
-
-    if cfg.infJump then State.infJumpEnabled=true; if setInfJump then setInfJump(true) end end
-    if cfg.antiRagdoll then State.antiRagdollEnabled=true; if setAntiRag then setAntiRag(true) end; startAntiRagdoll() end
-    if cfg.medusaCounter then State.medusaCounterEnabled=true; if setMedusaCounter then setMedusaCounter(true) end; setupMedusaCounter(LP.Character) end
-    if cfg.batCounter then State.batCounterEnabled=true; if setBatCounter then setBatCounter(true) end; startBatCounter() end
-    if cfg.autoStealEnabled then Steal.AutoStealEnabled=true; if setAutoGrab then setAutoGrab(true) end; pcall(startAutoSteal) end
-    if cfg.unwalkEnabled then State.unwalkEnabled=true; if setUnwalkToggle then setUnwalkToggle(true) end; startUnwalk() end
-    if cfg.stretchRez then State.stretchRezEnabled=true; if setStretchRez then setStretchRez(true) end end
-    if cfg.removeAccessories then State.removeAccessoriesEnabled=true; if setRemoveAccessories then setRemoveAccessories(true) end end
-    if cfg.antiLag then State.antiLagEnabled=true; if setAntiLag then setAntiLag(true) end end
-    if cfg.darkMode then State.darkModeEnabled=true; if setDarkMode then setDarkMode(true) end end
-    if cfg.desyncEnabled then State.desyncEnabled=true; task.defer(function() if setDesync then setDesync(true) end; if saDesync then saDesync(true) end; startDesyncSession() end) end
-    if cfg.autoBatToggled then State.autoBatToggled=true; task.defer(function() if autoBatSetVisual then autoBatSetVisual(true) end; pcall(startBatAimbot) end) end
-
-    local function lk(e,d) if not d then return end
-        if d.kb and Enum.KeyCode[d.kb] then e.kb=Enum.KeyCode[d.kb] end
-        if d.gp and Enum.KeyCode[d.gp] then e.gp=Enum.KeyCode[d.gp] end
-    end
-    lk(KB.AutoLeft,cfg.autoLeftKey); lk(KB.AutoRight,cfg.autoRightKey)
-    lk(KB.Drop,cfg.dropKey); lk(KB.TPDown,cfg.tpDownKey); lk(KB.AutoBat,cfg.autoBatKey)
-    lk(KB.GuiHide,cfg.guiHideKey)
-    
-    task.spawn(function()
-        task.wait(0.5)
-        local function lp(frame, d) if frame and type(d)=="table" and d.xs~=nil then frame.Position=UDim2.new(d.xs,d.xo,d.ys,d.yo) end end
-        lp(main, cfg.mainPos); lp(mini, cfg.miniPos)
-        lp(MobilePanel, cfg.panelPos); lp(pbFrame, cfg.pbPos)
-        for _, page in pairs(tabPages) do
-            for _, child in ipairs(page:GetChildren()) do
-                if child:IsA("Frame") then
-                    for _, subchild in ipairs(child:GetChildren()) do
-                        if subchild:IsA("TextBox") then
-                            for _, label in ipairs(child:GetChildren()) do
-                                if label:IsA("TextLabel") then
-                                    if label.Text == "Normal Speed" then subchild.Text = tostring(normalSpeed)
-                                    elseif label.Text == "Steal Speed" then subchild.Text = tostring(stealSpeed) end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end)
-    return true
-end
-
--- ============================================================
 -- TAB CONTENT
 -- ============================================================
 makeSecHeader("Bat Aimbot", "Bat Combat")
@@ -1340,8 +1299,9 @@ end
 
 makeSecHeader("Mechanics", "Game Mechanics")
 setAutoGrab = rowToggle("Mechanics", "Auto Grab", nil, false, function(on)
+	State.autoStealEnabled = on
 	Steal.AutoStealEnabled = on
-	if on then if not pcall(startAutoSteal) then Steal.AutoStealEnabled = false; setAutoGrab(false) end
+	if on then if not pcall(startAutoSteal) then Steal.AutoStealEnabled = false; State.autoStealEnabled = false; setAutoGrab(false) end
 	else stopAutoSteal() end
 	pcall(saveConfig)
 end)
@@ -1480,6 +1440,7 @@ setBatCounter = rowToggle("Mechanics", "Bat Counter", nil, false, function(on)
 end)
 
 setDesync = rowToggle("Mechanics", "Desync", nil, false, function(on) 
+	State.desyncEnabled = on
 	if on then startDesyncSession() else stopDesyncSession() end
 	pcall(saveConfig)
 end)
@@ -1775,113 +1736,9 @@ rowActionBtn("Settings", "Reset Mobile Buttons", function()
 	if resetMobileButtons then resetMobileButtons() end
 end)
 
--- Mobile Panel
-do
-	local BTN_SIZE = 58
-	local BTN_GAP = 14
-	local PADDING = 6
-	local COLS = 2
-	local ROWS = 3
-	local PANEL_W = PADDING * 2 + COLS * BTN_SIZE + (COLS - 1) * BTN_GAP
-	local PANEL_H = PADDING * 2 + ROWS * BTN_SIZE + (ROWS - 1) * BTN_GAP
-	MobilePanel = Instance.new("Frame")
-	MobilePanel.Name = "MobileButtonsPanel"
-	MobilePanel.Size = UDim2.new(0, PANEL_W, 0, PANEL_H)
-	MobilePanel.Position = UDim2.new(1, -(PANEL_W + 20), 1, -(PANEL_H + 20))
-	MobilePanel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-	MobilePanel.BackgroundTransparency = 1
-	MobilePanel.BorderSizePixel = 0
-	MobilePanel.ZIndex = 95
-	MobilePanel.Parent = gui
-	makeDraggable(MobilePanel)
-	MobilePanel.InputEnded:Connect(function(inp)
-		if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
-			task.defer(function() pcall(saveConfig) end)
-		end
-	end)
-	resetMobileButtons = function()
-		MobilePanel.Position = UDim2.new(1, -(PANEL_W + 20), 1, -(PANEL_H + 20))
-		task.defer(function() pcall(saveConfig) end)
-	end
-	local Q_OFF = Color3.fromRGB(0, 0, 0)
-	local Q_ON = Color3.fromRGB(255, 255, 255)
-	local Q_TEXT_OFF = Color3.fromRGB(255, 255, 255)
-	local Q_TEXT_ON = Color3.fromRGB(0, 0, 0)
-	local function createMobileButton(name, displayText, col, row, isToggle, onAction)
-		local xPos = PADDING + col * (BTN_SIZE + BTN_GAP)
-		local yPos = PADDING + row * (BTN_SIZE + BTN_GAP)
-		local btn = Instance.new("TextButton")
-		btn.Name = "Btn_" .. name
-		btn.Size = UDim2.new(0, BTN_SIZE, 0, BTN_SIZE)
-		btn.Position = UDim2.new(0, xPos, 0, yPos)
-		btn.BackgroundColor3 = Q_OFF
-		btn.Text = displayText
-		btn.TextColor3 = Q_TEXT_OFF
-		btn.TextScaled = false; btn.TextSize = 11
-		btn.Font = Enum.Font.GothamBold
-		btn.TextWrapped = true; btn.LineHeight = 1.2
-		btn.BorderSizePixel = 0; btn.AutoButtonColor = false
-		btn.ZIndex = 99
-		btn.Parent = MobilePanel
-		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 12)
-		local isOn = false
-		local function setter(s)
-			isOn = s
-			TweenService:Create(btn, TweenInfo.new(0.15), {
-				BackgroundColor3 = s and Q_ON or Q_OFF,
-				TextColor3 = s and Q_TEXT_ON or Q_TEXT_OFF,
-			}):Play()
-		end
-		local function flash()
-			TweenService:Create(btn, TweenInfo.new(0.08), {BackgroundColor3=Color3.fromRGB(200,200,200), TextColor3=Q_TEXT_ON}):Play()
-			task.delay(0.22, function()
-				TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3=Q_OFF, TextColor3=Q_TEXT_OFF}):Play()
-			end)
-		end
-		btn.Activated:Connect(function()
-			if isToggle then
-				isOn = not isOn; setter(isOn)
-				if onAction then onAction(isOn) end
-			else
-				flash()
-				if onAction then onAction() end
-			end
-		end)
-		return btn, setter
-	end
-	createMobileButton("Drop", "DROP\nBR", 0, 0, false, function() task.spawn(runDrop) end)
-	local _, saAL = createMobileButton("AutoLeft", "AUTO\nLEFT", 1, 0, true, function(on)
-		State.autoLeftEnabled = on
-		if on then
-			if State.autoRightEnabled then State.autoRightEnabled=false; if autoRightSetVisual then autoRightSetVisual(false) end; stopAutoRight() end
-			if State.autoBatToggled then State.autoBatToggled=false; if autoBatSetVisual then autoBatSetVisual(false) end; stopBatAimbot() end
-			startAutoLeft()
-		else stopAutoLeft() end
-		if autoLeftSetVisual then autoLeftSetVisual(State.autoLeftEnabled) end
-	end)
-	autoLeftSetVisual = function(on) saAL(on) end
-	local _, saAB = createMobileButton("AutoBat", "BAT\nAIMBOT", 0, 1, true, function(on)
-		State.autoBatToggled = on
-		if on then startBatAimbot() else stopBatAimbot() end
-	end)
-	autoBatSetVisual = function(on) saAB(on) end
-	local _, saAR = createMobileButton("AutoRight", "AUTO\nRIGHT", 1, 1, true, function(on)
-		State.autoRightEnabled = on
-		if on then
-			if State.autoLeftEnabled then State.autoLeftEnabled=false; if autoLeftSetVisual then autoLeftSetVisual(false) end; stopAutoLeft() end
-			if State.autoBatToggled then State.autoBatToggled=false; if autoBatSetVisual then autoBatSetVisual(false) end; stopBatAimbot() end
-			startAutoRight()
-		else stopAutoRight() end
-		if autoRightSetVisual then autoRightSetVisual(State.autoRightEnabled) end
-	end)
-	autoRightSetVisual = function(on) saAR(on) end
-	createMobileButton("TPDown", "TP\nDOWN", 0, 2, false, function() task.spawn(runTPDown) end)
-	mobileBtnActive.AutoLeft = saAL
-	mobileBtnActive.AutoRight = saAR
-	mobileBtnActive.AutoBat = saAB
-end
-
+-- ============================================================
 -- BAT AIMBOT FUNCTIONS
+-- ============================================================
 local function findBat()
 	local char = LP.Character; if not char then return nil end
 	for _, tool in ipairs(char:GetChildren()) do
@@ -1973,7 +1830,156 @@ stopBatAimbot = function()
 	if hum2 then hum2.AutoRotate = true end
 end
 
+-- ============================================================
+-- ANTI RAGDOLL
+-- ============================================================
+startAntiRagdoll=function()
+    if Conns.antiRag then return end
+    Conns.antiRag=RunService.Heartbeat:Connect(function()
+        if not State.antiRagdollEnabled then return end
+        local c=LP.Character; if not c then return end
+        local hum2=c:FindFirstChildOfClass("Humanoid"); local root=c:FindFirstChild("HumanoidRootPart")
+        if not hum2 or not root then return end; if hum2.Health<=0 then return end
+        local st=hum2:GetState(); if st==Enum.HumanoidStateType.Dead then return end
+        if st==Enum.HumanoidStateType.Physics or st==Enum.HumanoidStateType.Ragdoll or st==Enum.HumanoidStateType.FallingDown then
+            pcall(function() hum2:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+            pcall(function() workspace.CurrentCamera.CameraSubject=hum2 end)
+            pcall(function() local PM=LP.PlayerScripts:FindFirstChild("PlayerModule"); if PM then local CM=require(PM:FindFirstChild("ControlModule")); if CM then CM:Enable() end end end)
+            root.Velocity=Vector3.new(0,0,0); root.RotVelocity=Vector3.new(0,0,0)
+        end
+        for _,obj in ipairs(c:GetDescendants()) do pcall(function() if obj:IsA("Motor6D") and obj.Enabled==false then obj.Enabled=true end end) end
+    end)
+end
+stopAntiRagdoll=function() if Conns.antiRag then Conns.antiRag:Disconnect(); Conns.antiRag=nil end end
+
+-- ============================================================
+-- STEAL SYSTEM
+-- ============================================================
+local PLOT_CACHE_DURATION = 2
+local PROMPT_CACHE_REFRESH = 0.15
+local STEAL_COOLDOWN = 0.1
+
+local function resetProgressBar()
+    if progressPct then progressPct.Text="0%" end
+    if progressFill then progressFill.Size=UDim2.new(0,0,1,0) end
+end
+
+local function isMyPlotByName(pn)
+    local ct=tick(); if Steal.plotCache[pn] and (ct-(Steal.plotCacheTime[pn] or 0))<PLOT_CACHE_DURATION then return Steal.plotCache[pn] end
+    local plots=workspace:FindFirstChild("Plots"); if not plots then Steal.plotCache[pn]=false; Steal.plotCacheTime[pn]=ct; return false end
+    local plot=plots:FindFirstChild(pn); if not plot then Steal.plotCache[pn]=false; Steal.plotCacheTime[pn]=ct; return false end
+    local sign=plot:FindFirstChild("PlotSign"); if sign then local yb=sign:FindFirstChild("YourBase"); if yb and yb:IsA("BillboardGui") then local r=yb.Enabled==true; Steal.plotCache[pn]=r; Steal.plotCacheTime[pn]=ct; return r end end
+    Steal.plotCache[pn]=false; Steal.plotCacheTime[pn]=ct; return false
+end
+
+local function findNearestPrompt()
+    local c=LP.Character; if not c then return nil end; local root=c:FindFirstChild("HumanoidRootPart"); if not root then return nil end
+    local ct=tick(); if ct-Steal.promptCacheTime<PROMPT_CACHE_REFRESH and #Steal.cachedPrompts>0 then local np,nd=nil,math.huge; for _,data in ipairs(Steal.cachedPrompts) do if data.spawn then local dist=(data.spawn.Position-root.Position).Magnitude; if dist<=Steal.StealRadius and dist<nd then np=data.prompt; nd=dist end end end; if np then return np end end
+    Steal.cachedPrompts={}; Steal.promptCacheTime=ct; local plots=workspace:FindFirstChild("Plots"); if not plots then return nil end; local np,nd=nil,math.huge
+    for _,plot in ipairs(plots:GetChildren()) do if isMyPlotByName(plot.Name) then continue end; local pods=plot:FindFirstChild("AnimalPodiums"); if not pods then continue end
+        for _,pod in ipairs(pods:GetChildren()) do pcall(function() local base=pod:FindFirstChild("Base"); local sp=base and base:FindFirstChild("Spawn"); if sp then local att=sp:FindFirstChild("PromptAttachment"); if att then for _,child in ipairs(att:GetChildren()) do if child:IsA("ProximityPrompt") then local dist=(sp.Position-root.Position).Magnitude; table.insert(Steal.cachedPrompts,{prompt=child,spawn=sp}); if dist<=Steal.StealRadius and dist<nd then np=child; nd=dist end; break end end end end end) end
+    end; return np
+end
+
+local function executeSteal(prompt)
+    local ct=tick(); if ct-State.lastStealTick<STEAL_COOLDOWN then return end; if State.isStealing then return end
+    if not Steal.Data[prompt] then Steal.Data[prompt]={hold={},trigger={},ready=true}; pcall(function() if getconnections then for _,c2 in ipairs(getconnections(prompt.PromptButtonHoldBegan)) do if c2.Function then table.insert(Steal.Data[prompt].hold,c2.Function) end end; for _,c2 in ipairs(getconnections(prompt.Triggered)) do if c2.Function then table.insert(Steal.Data[prompt].trigger,c2.Function) end end else Steal.Data[prompt].useFallback=true end end) end
+    local data=Steal.Data[prompt]; if not data.ready then return end; data.ready=false; State.isStealing=true; State.stealStartTime=ct; State.lastStealTick=ct
+    if Conns.progress then Conns.progress:Disconnect() end
+    Conns.progress=RunService.Heartbeat:Connect(function() if not State.isStealing then Conns.progress:Disconnect(); return end; local prog=math.clamp((tick()-State.stealStartTime)/Steal.StealDuration,0,1); if progressFill then progressFill.Size=UDim2.new(prog,0,1,0) end; if progressPct then progressPct.Text=math.floor(prog*100).."%" end end)
+    task.spawn(function()
+        local ok=false; pcall(function() if not data.useFallback then for _,fn in ipairs(data.hold) do task.spawn(fn) end; task.wait(Steal.StealDuration); for _,fn in ipairs(data.trigger) do task.spawn(fn) end; ok=true end end)
+        if not ok and fireproximityprompt then pcall(function() fireproximityprompt(prompt); ok=true end) end
+        if not ok then pcall(function() prompt:InputHoldBegin(); task.wait(Steal.StealDuration); prompt:InputHoldEnd() end) end
+        task.wait(Steal.StealDuration*0.3); if Conns.progress then Conns.progress:Disconnect() end; resetProgressBar(); task.wait(0.05); data.ready=true; State.isStealing=false
+    end)
+end
+
+startAutoSteal=function()
+    if Conns.autoSteal then return end
+    Conns.autoSteal=RunService.Heartbeat:Connect(function() if not Steal.AutoStealEnabled or State.isStealing then return end; local p=findNearestPrompt(); if p then executeSteal(p) end end)
+end
+
+stopAutoSteal=function()
+    if Conns.autoSteal then Conns.autoSteal:Disconnect(); Conns.autoSteal=nil end
+    State.isStealing=false; State.lastStealTick=0; Steal.plotCache={}; Steal.plotCacheTime={}; Steal.cachedPrompts={}; resetProgressBar()
+end
+
+-- ============================================================
+-- MEDUSA COUNTER
+-- ============================================================
+local function findMedusa()
+    local c=LP.Character; if not c then return nil end
+    for _,t in ipairs(c:GetChildren()) do if t:IsA("Tool") then local n=t.Name:lower(); if n:find("medusa") or n:find("head") or n:find("stone") then return t end end end
+    local bp=LP:FindFirstChild("Backpack")
+    if bp then for _,t in ipairs(bp:GetChildren()) do if t:IsA("Tool") then local n=t.Name:lower(); if n:find("medusa") or n:find("head") or n:find("stone") then return t end end end end
+    return nil
+end
+local MEDUSA_COOLDOWN = 25
+local function useMedusaCounter()
+    if State.medusaDebounce then return end; if tick()-State.medusaLastUsed<MEDUSA_COOLDOWN then return end
+    local c=LP.Character; if not c then return end; State.medusaDebounce=true
+    local med=findMedusa(); if not med then State.medusaDebounce=false; return end
+    if med.Parent~=c then local hum2=c:FindFirstChildOfClass("Humanoid"); if hum2 then hum2:EquipTool(med) end end
+    pcall(function() med:Activate() end); State.medusaLastUsed=tick(); State.medusaDebounce=false
+end
+local function onAnchorChanged(part) return part:GetPropertyChangedSignal("Anchored"):Connect(function() if part.Anchored and part.Transparency==1 then useMedusaCounter() end end) end
+local function setupMedusaCounter(char)
+    for _,c2 in pairs(Conns.anchor) do pcall(function() c2:Disconnect() end) end; Conns.anchor={}
+    if not char then return end
+    for _,part in ipairs(char:GetDescendants()) do if part:IsA("BasePart") then table.insert(Conns.anchor,onAnchorChanged(part)) end end
+    table.insert(Conns.anchor,char.DescendantAdded:Connect(function(part) if part:IsA("BasePart") then table.insert(Conns.anchor,onAnchorChanged(part)) end end))
+end
+local function stopMedusaCounter() for _,c2 in pairs(Conns.anchor) do pcall(function() c2:Disconnect() end) end; Conns.anchor={} end
+
+-- ============================================================
+-- BAT COUNTER
+-- ============================================================
+local BAT_COUNTER_SLAP_LIST={"Bat","Slap","Iron Slap","Gold Slap","Diamond Slap","Emerald Slap","Ruby Slap","Dark Matter Slap","Flame Slap","Nuclear Slap","Galaxy Slap","Glitched Slap"}
+local function findBatForCounter()
+    local c=LP.Character; if not c then return nil end
+    local bp=LP:FindFirstChildOfClass("Backpack")
+    for _,name in ipairs(BAT_COUNTER_SLAP_LIST) do
+        local t=c:FindFirstChild(name) or (bp and bp:FindFirstChild(name)); if t then return t end
+    end
+    for _,ch in ipairs(c:GetChildren()) do if ch:IsA("Tool") and ch.Name:lower():find("bat") then return ch end end
+    if bp then for _,ch in ipairs(bp:GetChildren()) do if ch:IsA("Tool") and ch.Name:lower():find("bat") then return ch end end end
+    return nil
+end
+local function swingBatForCounter(bat,char)
+    local hum2=char:FindFirstChildOfClass("Humanoid")
+    if bat.Parent~=char then if hum2 then pcall(function() hum2:EquipTool(bat) end) end; task.wait(0.05) end
+    local remote=bat:FindFirstChildOfClass("RemoteEvent") or bat:FindFirstChildOfClass("RemoteFunction")
+    if remote and remote:IsA("RemoteEvent") then
+        pcall(function() remote:FireServer() end); task.wait(0.15); pcall(function() remote:FireServer() end)
+    else pcall(function() bat:Activate() end); task.wait(0.15); pcall(function() bat:Activate() end) end
+end
+local function startBatCounter()
+    if Conns.batCounter then return end
+    Conns.batCounter=RunService.Heartbeat:Connect(function()
+        if not State.batCounterEnabled then return end
+        if State.batCounterDebounce then return end
+        local char=LP.Character; if not char then return end
+        local hum2=char:FindFirstChildOfClass("Humanoid"); if not hum2 then return end
+        local st=hum2:GetState()
+        if st==Enum.HumanoidStateType.Physics or st==Enum.HumanoidStateType.Ragdoll or st==Enum.HumanoidStateType.FallingDown then
+            State.batCounterDebounce=true
+            task.spawn(function()
+                local bat=findBatForCounter()
+                if bat then swingBatForCounter(bat,char) end
+                task.wait(0.5); State.batCounterDebounce=false
+            end)
+        end
+    end)
+end
+local function stopBatCounter()
+    if Conns.batCounter then Conns.batCounter:Disconnect(); Conns.batCounter=nil end
+    State.batCounterDebounce=false
+end
+
+-- ============================================================
 -- DESYNC
+-- ============================================================
 do
 local DS = {
 	active = false, conn = nil, invisiblePart = nil,
@@ -2169,146 +2175,117 @@ LP.CharacterAdded:Connect(function(char)
 end)
 end
 
--- MEDUSA COUNTER
-local function findMedusa()
-    local c=LP.Character; if not c then return nil end
-    for _,t in ipairs(c:GetChildren()) do if t:IsA("Tool") then local n=t.Name:lower(); if n:find("medusa") or n:find("head") or n:find("stone") then return t end end end
-    local bp=LP:FindFirstChild("Backpack")
-    if bp then for _,t in ipairs(bp:GetChildren()) do if t:IsA("Tool") then local n=t.Name:lower(); if n:find("medusa") or n:find("head") or n:find("stone") then return t end end end end
-    return nil
-end
-local MEDUSA_COOLDOWN = 25
-local function useMedusaCounter()
-    if State.medusaDebounce then return end; if tick()-State.medusaLastUsed<MEDUSA_COOLDOWN then return end
-    local c=LP.Character; if not c then return end; State.medusaDebounce=true
-    local med=findMedusa(); if not med then State.medusaDebounce=false; return end
-    if med.Parent~=c then local hum2=c:FindFirstChildOfClass("Humanoid"); if hum2 then hum2:EquipTool(med) end end
-    pcall(function() med:Activate() end); State.medusaLastUsed=tick(); State.medusaDebounce=false
-end
-local function onAnchorChanged(part) return part:GetPropertyChangedSignal("Anchored"):Connect(function() if part.Anchored and part.Transparency==1 then useMedusaCounter() end end) end
-local function setupMedusaCounter(char)
-    for _,c2 in pairs(Conns.anchor) do pcall(function() c2:Disconnect() end) end; Conns.anchor={}
-    if not char then return end
-    for _,part in ipairs(char:GetDescendants()) do if part:IsA("BasePart") then table.insert(Conns.anchor,onAnchorChanged(part)) end end
-    table.insert(Conns.anchor,char.DescendantAdded:Connect(function(part) if part:IsA("BasePart") then table.insert(Conns.anchor,onAnchorChanged(part)) end end))
-end
-local function stopMedusaCounter() for _,c2 in pairs(Conns.anchor) do pcall(function() c2:Disconnect() end) end; Conns.anchor={} end
-
--- BAT COUNTER
-local BAT_COUNTER_SLAP_LIST={"Bat","Slap","Iron Slap","Gold Slap","Diamond Slap","Emerald Slap","Ruby Slap","Dark Matter Slap","Flame Slap","Nuclear Slap","Galaxy Slap","Glitched Slap"}
-local function findBatForCounter()
-    local c=LP.Character; if not c then return nil end
-    local bp=LP:FindFirstChildOfClass("Backpack")
-    for _,name in ipairs(BAT_COUNTER_SLAP_LIST) do
-        local t=c:FindFirstChild(name) or (bp and bp:FindFirstChild(name)); if t then return t end
-    end
-    for _,ch in ipairs(c:GetChildren()) do if ch:IsA("Tool") and ch.Name:lower():find("bat") then return ch end end
-    if bp then for _,ch in ipairs(bp:GetChildren()) do if ch:IsA("Tool") and ch.Name:lower():find("bat") then return ch end end end
-    return nil
-end
-local function swingBatForCounter(bat,char)
-    local hum2=char:FindFirstChildOfClass("Humanoid")
-    if bat.Parent~=char then if hum2 then pcall(function() hum2:EquipTool(bat) end) end; task.wait(0.05) end
-    local remote=bat:FindFirstChildOfClass("RemoteEvent") or bat:FindFirstChildOfClass("RemoteFunction")
-    if remote and remote:IsA("RemoteEvent") then
-        pcall(function() remote:FireServer() end); task.wait(0.15); pcall(function() remote:FireServer() end)
-    else pcall(function() bat:Activate() end); task.wait(0.15); pcall(function() bat:Activate() end) end
-end
-local function startBatCounter()
-    if Conns.batCounter then return end
-    Conns.batCounter=RunService.Heartbeat:Connect(function()
-        if not State.batCounterEnabled then return end
-        if State.batCounterDebounce then return end
-        local char=LP.Character; if not char then return end
-        local hum2=char:FindFirstChildOfClass("Humanoid"); if not hum2 then return end
-        local st=hum2:GetState()
-        if st==Enum.HumanoidStateType.Physics or st==Enum.HumanoidStateType.Ragdoll or st==Enum.HumanoidStateType.FallingDown then
-            State.batCounterDebounce=true
-            task.spawn(function()
-                local bat=findBatForCounter()
-                if bat then swingBatForCounter(bat,char) end
-                task.wait(0.5); State.batCounterDebounce=false
-            end)
-        end
-    end)
-end
-local function stopBatCounter()
-    if Conns.batCounter then Conns.batCounter:Disconnect(); Conns.batCounter=nil end
-    State.batCounterDebounce=false
-end
-
--- ANTI RAGDOLL
-startAntiRagdoll=function()
-    if Conns.antiRag then return end
-    Conns.antiRag=RunService.Heartbeat:Connect(function()
-        if not State.antiRagdollEnabled then return end
-        local c=LP.Character; if not c then return end
-        local hum2=c:FindFirstChildOfClass("Humanoid"); local root=c:FindFirstChild("HumanoidRootPart")
-        if not hum2 or not root then return end; if hum2.Health<=0 then return end
-        local st=hum2:GetState(); if st==Enum.HumanoidStateType.Dead then return end
-        if st==Enum.HumanoidStateType.Physics or st==Enum.HumanoidStateType.Ragdoll or st==Enum.HumanoidStateType.FallingDown then
-            pcall(function() hum2:ChangeState(Enum.HumanoidStateType.GettingUp) end)
-            pcall(function() workspace.CurrentCamera.CameraSubject=hum2 end)
-            pcall(function() local PM=LP.PlayerScripts:FindFirstChild("PlayerModule"); if PM then local CM=require(PM:FindFirstChild("ControlModule")); if CM then CM:Enable() end end end)
-            root.Velocity=Vector3.new(0,0,0); root.RotVelocity=Vector3.new(0,0,0)
-        end
-        for _,obj in ipairs(c:GetDescendants()) do pcall(function() if obj:IsA("Motor6D") and obj.Enabled==false then obj.Enabled=true end end) end
-    end)
-end
-stopAntiRagdoll=function() if Conns.antiRag then Conns.antiRag:Disconnect(); Conns.antiRag=nil end end
-
--- STEAL SYSTEM
-local PLOT_CACHE_DURATION = 2
-local PROMPT_CACHE_REFRESH = 0.15
-local STEAL_COOLDOWN = 0.1
-
-local function resetProgressBar()
-    if progressPct then progressPct.Text="0%" end
-    if progressFill then progressFill.Size=UDim2.new(0,0,1,0) end
-end
-
-local function isMyPlotByName(pn)
-    local ct=tick(); if Steal.plotCache[pn] and (ct-(Steal.plotCacheTime[pn] or 0))<PLOT_CACHE_DURATION then return Steal.plotCache[pn] end
-    local plots=workspace:FindFirstChild("Plots"); if not plots then Steal.plotCache[pn]=false; Steal.plotCacheTime[pn]=ct; return false end
-    local plot=plots:FindFirstChild(pn); if not plot then Steal.plotCache[pn]=false; Steal.plotCacheTime[pn]=ct; return false end
-    local sign=plot:FindFirstChild("PlotSign"); if sign then local yb=sign:FindFirstChild("YourBase"); if yb and yb:IsA("BillboardGui") then local r=yb.Enabled==true; Steal.plotCache[pn]=r; Steal.plotCacheTime[pn]=ct; return r end end
-    Steal.plotCache[pn]=false; Steal.plotCacheTime[pn]=ct; return false
-end
-
-local function findNearestPrompt()
-    local c=LP.Character; if not c then return nil end; local root=c:FindFirstChild("HumanoidRootPart"); if not root then return nil end
-    local ct=tick(); if ct-Steal.promptCacheTime<PROMPT_CACHE_REFRESH and #Steal.cachedPrompts>0 then local np,nd=nil,math.huge; for _,data in ipairs(Steal.cachedPrompts) do if data.spawn then local dist=(data.spawn.Position-root.Position).Magnitude; if dist<=Steal.StealRadius and dist<nd then np=data.prompt; nd=dist end end end; if np then return np end end
-    Steal.cachedPrompts={}; Steal.promptCacheTime=ct; local plots=workspace:FindFirstChild("Plots"); if not plots then return nil end; local np,nd=nil,math.huge
-    for _,plot in ipairs(plots:GetChildren()) do if isMyPlotByName(plot.Name) then continue end; local pods=plot:FindFirstChild("AnimalPodiums"); if not pods then continue end
-        for _,pod in ipairs(pods:GetChildren()) do pcall(function() local base=pod:FindFirstChild("Base"); local sp=base and base:FindFirstChild("Spawn"); if sp then local att=sp:FindFirstChild("PromptAttachment"); if att then for _,child in ipairs(att:GetChildren()) do if child:IsA("ProximityPrompt") then local dist=(sp.Position-root.Position).Magnitude; table.insert(Steal.cachedPrompts,{prompt=child,spawn=sp}); if dist<=Steal.StealRadius and dist<nd then np=child; nd=dist end; break end end end end end) end
-    end; return np
+-- ============================================================
+-- MOBILE PANEL
+-- ============================================================
+do
+	local BTN_SIZE = 58
+	local BTN_GAP = 14
+	local PADDING = 6
+	local COLS = 2
+	local ROWS = 3
+	local PANEL_W = PADDING * 2 + COLS * BTN_SIZE + (COLS - 1) * BTN_GAP
+	local PANEL_H = PADDING * 2 + ROWS * BTN_SIZE + (ROWS - 1) * BTN_GAP
+	MobilePanel = Instance.new("Frame")
+	MobilePanel.Name = "MobileButtonsPanel"
+	MobilePanel.Size = UDim2.new(0, PANEL_W, 0, PANEL_H)
+	MobilePanel.Position = UDim2.new(1, -(PANEL_W + 20), 1, -(PANEL_H + 20))
+	MobilePanel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	MobilePanel.BackgroundTransparency = 1
+	MobilePanel.BorderSizePixel = 0
+	MobilePanel.ZIndex = 95
+	MobilePanel.Parent = gui
+	makeDraggable(MobilePanel)
+	MobilePanel.InputEnded:Connect(function(inp)
+		if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then
+			task.defer(function() pcall(saveConfig) end)
+		end
+	end)
+	resetMobileButtons = function()
+		MobilePanel.Position = UDim2.new(1, -(PANEL_W + 20), 1, -(PANEL_H + 20))
+		task.defer(function() pcall(saveConfig) end)
+	end
+	local Q_OFF = Color3.fromRGB(0, 0, 0)
+	local Q_ON = Color3.fromRGB(255, 255, 255)
+	local Q_TEXT_OFF = Color3.fromRGB(255, 255, 255)
+	local Q_TEXT_ON = Color3.fromRGB(0, 0, 0)
+	local function createMobileButton(name, displayText, col, row, isToggle, onAction)
+		local xPos = PADDING + col * (BTN_SIZE + BTN_GAP)
+		local yPos = PADDING + row * (BTN_SIZE + BTN_GAP)
+		local btn = Instance.new("TextButton")
+		btn.Name = "Btn_" .. name
+		btn.Size = UDim2.new(0, BTN_SIZE, 0, BTN_SIZE)
+		btn.Position = UDim2.new(0, xPos, 0, yPos)
+		btn.BackgroundColor3 = Q_OFF
+		btn.Text = displayText
+		btn.TextColor3 = Q_TEXT_OFF
+		btn.TextScaled = false; btn.TextSize = 11
+		btn.Font = Enum.Font.GothamBold
+		btn.TextWrapped = true; btn.LineHeight = 1.2
+		btn.BorderSizePixel = 0; btn.AutoButtonColor = false
+		btn.ZIndex = 99
+		btn.Parent = MobilePanel
+		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 12)
+		local isOn = false
+		local function setter(s)
+			isOn = s
+			TweenService:Create(btn, TweenInfo.new(0.15), {
+				BackgroundColor3 = s and Q_ON or Q_OFF,
+				TextColor3 = s and Q_TEXT_ON or Q_TEXT_OFF,
+			}):Play()
+		end
+		local function flash()
+			TweenService:Create(btn, TweenInfo.new(0.08), {BackgroundColor3=Color3.fromRGB(200,200,200), TextColor3=Q_TEXT_ON}):Play()
+			task.delay(0.22, function()
+				TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3=Q_OFF, TextColor3=Q_TEXT_OFF}):Play()
+			end)
+		end
+		btn.Activated:Connect(function()
+			if isToggle then
+				isOn = not isOn; setter(isOn)
+				if onAction then onAction(isOn) end
+			else
+				flash()
+				if onAction then onAction() end
+			end
+		end)
+		return btn, setter
+	end
+	createMobileButton("Drop", "DROP\nBR", 0, 0, false, function() task.spawn(runDrop) end)
+	local _, saAL = createMobileButton("AutoLeft", "AUTO\nLEFT", 1, 0, true, function(on)
+		State.autoLeftEnabled = on
+		if on then
+			if State.autoRightEnabled then State.autoRightEnabled=false; if autoRightSetVisual then autoRightSetVisual(false) end; stopAutoRight() end
+			if State.autoBatToggled then State.autoBatToggled=false; if autoBatSetVisual then autoBatSetVisual(false) end; stopBatAimbot() end
+			startAutoLeft()
+		else stopAutoLeft() end
+		if autoLeftSetVisual then autoLeftSetVisual(State.autoLeftEnabled) end
+	end)
+	autoLeftSetVisual = function(on) saAL(on) end
+	local _, saAB = createMobileButton("AutoBat", "BAT\nAIMBOT", 0, 1, true, function(on)
+		State.autoBatToggled = on
+		if on then startBatAimbot() else stopBatAimbot() end
+	end)
+	autoBatSetVisual = function(on) saAB(on) end
+	local _, saAR = createMobileButton("AutoRight", "AUTO\nRIGHT", 1, 1, true, function(on)
+		State.autoRightEnabled = on
+		if on then
+			if State.autoLeftEnabled then State.autoLeftEnabled=false; if autoLeftSetVisual then autoLeftSetVisual(false) end; stopAutoLeft() end
+			if State.autoBatToggled then State.autoBatToggled=false; if autoBatSetVisual then autoBatSetVisual(false) end; stopBatAimbot() end
+			startAutoRight()
+		else stopAutoRight() end
+		if autoRightSetVisual then autoRightSetVisual(State.autoRightEnabled) end
+	end)
+	autoRightSetVisual = function(on) saAR(on) end
+	createMobileButton("TPDown", "TP\nDOWN", 0, 2, false, function() task.spawn(runTPDown) end)
+	mobileBtnActive.AutoLeft = saAL
+	mobileBtnActive.AutoRight = saAR
+	mobileBtnActive.AutoBat = saAB
 end
 
-local function executeSteal(prompt)
-    local ct=tick(); if ct-State.lastStealTick<STEAL_COOLDOWN then return end; if State.isStealing then return end
-    if not Steal.Data[prompt] then Steal.Data[prompt]={hold={},trigger={},ready=true}; pcall(function() if getconnections then for _,c2 in ipairs(getconnections(prompt.PromptButtonHoldBegan)) do if c2.Function then table.insert(Steal.Data[prompt].hold,c2.Function) end end; for _,c2 in ipairs(getconnections(prompt.Triggered)) do if c2.Function then table.insert(Steal.Data[prompt].trigger,c2.Function) end end else Steal.Data[prompt].useFallback=true end end) end
-    local data=Steal.Data[prompt]; if not data.ready then return end; data.ready=false; State.isStealing=true; State.stealStartTime=ct; State.lastStealTick=ct
-    if Conns.progress then Conns.progress:Disconnect() end
-    Conns.progress=RunService.Heartbeat:Connect(function() if not State.isStealing then Conns.progress:Disconnect(); return end; local prog=math.clamp((tick()-State.stealStartTime)/Steal.StealDuration,0,1); if progressFill then progressFill.Size=UDim2.new(prog,0,1,0) end; if progressPct then progressPct.Text=math.floor(prog*100).."%" end end)
-    task.spawn(function()
-        local ok=false; pcall(function() if not data.useFallback then for _,fn in ipairs(data.hold) do task.spawn(fn) end; task.wait(Steal.StealDuration); for _,fn in ipairs(data.trigger) do task.spawn(fn) end; ok=true end end)
-        if not ok and fireproximityprompt then pcall(function() fireproximityprompt(prompt); ok=true end) end
-        if not ok then pcall(function() prompt:InputHoldBegin(); task.wait(Steal.StealDuration); prompt:InputHoldEnd() end) end
-        task.wait(Steal.StealDuration*0.3); if Conns.progress then Conns.progress:Disconnect() end; resetProgressBar(); task.wait(0.05); data.ready=true; State.isStealing=false
-    end)
-end
-
-startAutoSteal=function()
-    if Conns.autoSteal then return end
-    Conns.autoSteal=RunService.Heartbeat:Connect(function() if not Steal.AutoStealEnabled or State.isStealing then return end; local p=findNearestPrompt(); if p then executeSteal(p) end end)
-end
-
-stopAutoSteal=function()
-    if Conns.autoSteal then Conns.autoSteal:Disconnect(); Conns.autoSteal=nil end
-    State.isStealing=false; State.lastStealTick=0; Steal.plotCache={}; Steal.plotCacheTime={}; Steal.cachedPrompts={}; resetProgressBar()
-end
-
+-- ============================================================
 -- CHARACTER SETUP
+-- ============================================================
 local h,hrp,speedLbl
 
 local function setupChar(char)
@@ -2345,7 +2322,9 @@ end
 LP.CharacterAdded:Connect(setupChar)
 if LP.Character then task.spawn(function() setupChar(LP.Character) end) end
 
+-- ============================================================
 -- RUNTIME LOOPS
+-- ============================================================
 RunService.Stepped:Connect(function()
     for _,p in ipairs(Players:GetPlayers()) do
         if p~=LP and p.Character then
@@ -2381,7 +2360,9 @@ RunService.RenderStepped:Connect(function()
     end)
 end)
 
+-- ============================================================
 -- INPUT
+-- ============================================================
 UIS.InputBegan:Connect(function(inp,gp)
     if gp and inp.UserInputType ~= Enum.UserInputType.Gamepad1 then return end
     local kc=inp.KeyCode; if kc==Enum.KeyCode.Unknown then return end
@@ -2414,7 +2395,9 @@ UIS.InputBegan:Connect(function(inp,gp)
     end
 end)
 
--- INIT
+-- ============================================================
+-- INIT - LOAD CONFIG THEN SAVE
+-- ============================================================
 task.delay(0.5, function()
     pcall(loadConfig)
     task.wait(0.5)
@@ -2425,7 +2408,9 @@ task.spawn(function()
     while task.wait(30) do pcall(saveConfig) end
 end)
 
+-- ============================================================
 -- INTRO ANIMATION
+-- ============================================================
 local function playIntroAnimation()
 	if not State or not State.introEnabled then return end
 	local _introPlayers = game:GetService("Players")
@@ -2562,4 +2547,4 @@ task.spawn(function()
 	if State and State.introEnabled then playIntroAnimation() end
 end)
 
-print("[Envy Hub] Loaded!")
+print("[Envy Hub] Loaded! Everything saves now.")
